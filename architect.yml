@@ -1,0 +1,80 @@
+name: nextjs
+
+description: Example NextJS component that calls a lightweight API
+
+homepage: https://github.com/architect-templates/next
+
+keywords:
+  - nextjs
+  - react
+
+# Add secrets to be used by different services. For more information:
+# https://docs.architect.io/deployments/secrets/
+secrets:
+  service_port:
+    description: Port for app service
+    default: 3000
+
+# Below are the configured services for the NextJS component. Note that the actual
+# NextJS application we're working on is defined as a service on line 23
+# For more info - https://docs.architect.io/components/services/
+services:
+  ### This service is the actual NextJS component ###
+  app:
+    # Build context is the location of your application relative to the architect.yml file
+    build:
+      context: ./
+    # Main interface port used to help define the url in the `interfaces` block on line 82
+    interfaces:
+      main:
+        port: ${{ secrets.service_port }}
+        # ingresses are used to expose the application to the gateway, allowing
+        #   other services and dependencies to connect to it.
+        #   For more info - https://docs.architect.io/components/interfaces/
+        ingress:
+          subdomain: app
+    # Set environment variables for your application here
+    environment:
+      PORT: ${{ services.app.interfaces.main.port }}
+      API_ADDR: ${{ services.lightweight-api.interfaces.http.url }}
+      NODE_ENV: production
+    # The liveness_probe makes sure the application is healthy - if not, it will re-start the application
+    liveness_probe:
+      command: curl --fail localhost:3000/
+      initial_delay: 30s
+      interval: 30s
+      failure_threshold: 3
+    # We want our app to start up after the API is running so that we can connect to it on startup!
+    # This block contains a list of services we need to start before 'app' starts.
+    depends_on:
+      - lightweight-api
+    # Debug block is used to enable hot-reloading to make real-time changes to an
+    #   application while running `architect dev`. For more info, see -
+    #   https://docs.architect.io/components/local-configuration/#hot-reloading
+    debug:
+      build:
+        # Use a different Dockerfile for local development that supports hot reloading
+        dockerfile: Dockerfile.dev
+      environment:
+        NODE_ENV: development
+      volumes:
+        pages:
+          # The `WORKDIR` defined in the Dockerfile (/app) + name of source code directory (/pages)
+          mount_path: /app/pages
+          # Path to source code relative to the architect.yml file (./pages)
+          host_path: ./pages
+        lib:
+          mount_path: /app/lib
+          host_path: ./lib
+        styles:
+          mount_path: /app/styles
+          host_path: ./styles
+
+  #  This is an additional service that adds a lightweight API to the
+  #   application to show off Architect's support for microservice architecture
+  #   through service discovery. For more info, check out:
+  #   https://docs.architect.io/components/service-discovery/
+  lightweight-api:
+    image: registry.gitlab.com/architect-io/artifacts/nodejs-hello-world:latest
+    interfaces:
+      http: 3000
